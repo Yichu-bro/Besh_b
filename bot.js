@@ -25,7 +25,7 @@ const db = getDatabase(appFB);
 // 🤖 Bot & Server Setup
 // ============================
 // ⚠️ IMPORTANT: Replace with your actual bot token from BotFather
-const BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'; 
+const BOT_TOKEN = '8200340976:AAHWfVE8MZkmCZMDfZZNopv55PTWsOlZtgU'; 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 const app = express();
@@ -33,7 +33,7 @@ app.use(express.json());
 app.use(cors()); // Enable CORS for all routes
 
 // ⚠️ IMPORTANT: Change this to a long, random, secure secret key
-const ADMIN_SECRET_KEY = "YOUR_SUPER_SECRET_ADMIN_KEY"; 
+const ADMIN_SECRET_KEY = "@Yichu2330@"; 
 
 // ============================
 // ➡️ Telegram Bot Logic (/start command)
