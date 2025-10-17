@@ -90,7 +90,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     // Send the welcome message with the Mini App button
     const configSnap = await get(ref(db, 'config'));
     const config = configSnap.val() || {};
-    const webAppUrl = config.webAppUrl || 'https://your-website.com/Tag2Cash.html'; // Fallback URL
+    const webAppUrl = config.webAppUrl || 'https://rainbow-hotteok-d51412.netlify.app/besh.html'; // Fallback URL
 
     const imageUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQrVCb0_Y-Okp3H04dSuasMa78iD1BHv9Sz-U-r0ONnUg&s=10'; // <-- EDIT THIS IMAGE LINK
     const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.`; // <-- EDIT THIS TEXT
