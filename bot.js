@@ -5,7 +5,7 @@ import { getDatabase, ref, set, get, update, remove } from 'firebase/database';
 import cors from 'cors';
 
 // ============================
-// 🔥 Firebase Configuration
+// 🔥 Firebase Configuration (SAFE on the server)
 // ============================
 const firebaseConfig = {
     apiKey: "AIzaSyD8-E3hJLweH60kcAHLhg8kcbEWkADejVg",
@@ -45,17 +45,10 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     const config = configSnap.val() || {};
     if (!snap.exists()) {
         const newUser = {
-            username: username,
-            points: 0,
-            adsWatchedToday: 0,
-            totalAdsWatchedLifetime: 0,
-            lastAdWatchDate: null,
-            claimedBonuses: [],
-            totalWithdrawn: 0,
-            referralCode: chatId.toString(),
-            referredBy: referrerId || null,
-            referredUsers: [],
-            createdAt: new Date().toISOString()
+            username: username, points: 0, adsWatchedToday: 0, totalAdsWatchedLifetime: 0,
+            lastAdWatchDate: null, claimedBonuses: [], totalWithdrawn: 0,
+            referralCode: chatId.toString(), referredBy: referrerId || null,
+            referredUsers: [], createdAt: new Date().toISOString()
         };
         if (referrerId && referrerId !== chatId.toString()) {
             newUser.points += (config.referralBonusReferee || 0);
@@ -77,11 +70,8 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.`;
     const buttonText = '🚀 Launch App';
     await bot.sendPhoto(chatId, imageUrl, {
-        caption: caption,
-        parse_mode: 'HTML',
-        reply_markup: {
-            inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]]
-        }
+        caption: caption, parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]] }
     });
 });
 
@@ -95,54 +85,50 @@ const isAdmin = (req, res, next) => {
 };
 
 // --- General APIs ---
-// All GET endpoints remain the same (config, user, tasks)
-app.get('/api/user/:userId', async (req, res) => { /* ... no changes ... */ });
-app.post('/api/user/:userId', async (req, res) => { /* ... no changes ... */ });
-app.get('/api/config', async (req, res) => { /* ... no changes ... */ });
-app.get('/api/tasks', async (req, res) => { /* ... no changes ... */ });
-app.get('/api/referrer/:userId', async (req, res) => { /* ... no changes ... */ });
+app.get('/api/user/:userId', async (req, res) => {
+    const snap = await get(ref(db, `users/${req.params.userId}`));
+    if (snap.exists()) res.json(snap.val());
+    else res.status(404).send({ error: 'User not found. Please /start the bot.' });
+});
+app.post('/api/user/:userId', async (req, res) => {
+    await set(ref(db, `users/${req.params.userId}`), req.body);
+    res.send({ success: true });
+});
+app.get('/api/config', async (req, res) => res.json((await get(ref(db, 'config'))).val() || {}));
+app.get('/api/tasks', async (req, res) => res.json((await get(ref(db, 'bonusTasks'))).val() || {}));
+app.get('/api/referrer/:userId', async (req, res) => {
+    const snap = await get(ref(db, `users/${req.params.userId}`));
+    if (snap.exists()) res.json({ username: snap.val().username });
+    else res.status(404).send({ error: 'Referrer not found' });
+});
 
-// --- Leaderboard API (Updated for Efficiency) ---
+// --- Leaderboard API ---
 app.get('/api/leaderboard/:userId', async (req, res) => {
     const currentUserId = req.params.userId;
     const usersSnap = await get(ref(db, 'users'));
     if (!usersSnap.exists()) return res.json({ byPoints: [], byReferrals: [], currentUserRank: null });
-
     const users = Object.entries(usersSnap.val()).map(([id, data]) => ({
-        id,
-        username: data.username,
-        points: data.points || 0,
+        id, username: data.username, points: data.points || 0,
         referrals: data.referredUsers?.length || 0
     }));
-
     const sortedByPoints = [...users].sort((a, b) => b.points - a.points);
     const sortedByReferrals = [...users].sort((a, b) => b.referrals - a.referrals);
-
-    const findRank = (sortedArray, userId) => {
-        const rank = sortedArray.findIndex(u => u.id === userId) + 1;
-        return rank > 0 ? rank : null;
-    };
-
-    const currentUserRank = {
-        points: findRank(sortedByPoints, currentUserId),
-        referrals: findRank(sortedByReferrals, currentUserId)
-    };
-    
+    const findRank = (arr, id) => arr.findIndex(u => u.id === id) + 1;
     res.json({
-        byPoints: sortedByPoints.slice(0, 100),
-        byReferrals: sortedByReferrals.slice(0, 100),
-        currentUserRank
+        byPoints: sortedByPoints.slice(0, 100), byReferrals: sortedByReferrals.slice(0, 100),
+        currentUserRank: {
+            points: findRank(sortedByPoints, currentUserId) || '100+',
+            referrals: findRank(sortedByReferrals, currentUserId) || '100+'
+        }
     });
 });
 
 // --- Membership Verification API ---
 app.post('/api/verify-membership', async (req, res) => {
-    // This endpoint is already robust and needs no changes.
     const { userId, taskId, channelId, reward } = req.body;
     try {
         const member = await bot.getChatMember(channelId, userId);
-        const validStatus = ['creator', 'administrator', 'member'].includes(member.status);
-        if (validStatus) {
+        if (['creator', 'administrator', 'member'].includes(member.status)) {
             const userRef = ref(db, `users/${userId}`);
             const userSnap = await get(userRef);
             if (userSnap.exists()) {
@@ -160,44 +146,28 @@ app.post('/api/verify-membership', async (req, res) => {
     }
 });
 
-// --- Withdrawal API (Fixed Notification) ---
-const escapeMarkdownV2 = (text) => {
-  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
-};
-
+// --- Withdrawal API ---
+const escapeMarkdownV2 = (text) => text.toString().replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 app.post('/api/request-withdrawal', async (req, res) => {
     const { userId, amount, method, account } = req.body;
     const userSnap = await get(ref(db, `users/${userId}`));
     if (!userSnap.exists()) return res.status(404).send({ error: "User not found." });
-    
     const user = userSnap.val();
     const config = (await get(ref(db, 'config'))).val() || {};
     const adminChatId = config.telegramChatId;
-
     if (!adminChatId) return res.status(500).send({ error: "Admin Chat ID not configured." });
-
     const message = `
 🔔 *New Withdrawal Request* 🔔
-\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_
 *User:* ${escapeMarkdownV2(user.username)} \\(${escapeMarkdownV2(userId)}\\)
-*Amount:* ${amount} ${escapeMarkdownV2(config.currencyName || 'Points')}
+*Amount:* ${escapeMarkdownV2(amount)} ${escapeMarkdownV2(config.currencyName || 'Points')}
 *Method:* ${escapeMarkdownV2(method)}
 *Wallet:* \`${escapeMarkdownV2(account)}\`
-\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_
 *Remaining Balance:* ${user.points - amount}
-*Total Ads Watched:* ${user.totalAdsWatchedLifetime || 0}
-\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_
-*Time:* ${escapeMarkdownV2(new Date().toLocaleString('en-GB'))}
+*Total Ads:* ${user.totalAdsWatchedLifetime || 0}
     `;
-
     try {
         await bot.sendMessage(adminChatId, message, { parse_mode: 'MarkdownV2' });
-        
-        // Update user's total withdrawn amount
-        await update(ref(db, `users/${userId}`), {
-            totalWithdrawn: (user.totalWithdrawn || 0) + amount
-        });
-
+        await update(ref(db, `users/${userId}`), { totalWithdrawn: (user.totalWithdrawn || 0) + amount });
         res.send({ success: true });
     } catch (error) {
         console.error("TELEGRAM SEND FAILED:", error.response?.body || error.message);
@@ -205,13 +175,12 @@ app.post('/api/request-withdrawal', async (req, res) => {
     }
 });
 
-
-// --- Admin APIs (No changes needed) ---
-app.post('/api/admin/config', isAdmin, async (req, res) => { /* ... */ });
-app.post('/api/admin/tasks', isAdmin, async (req, res) => { /* ... */ });
-app.post('/api/admin/tasks/delete', isAdmin, async (req, res) => { /* ... */ });
-app.post('/api/admin/find-user', isAdmin, async (req, res) => { /* ... */ });
-app.post('/api/admin/update-balance', isAdmin, async (req, res) => { /* ... */ });
+// --- Admin APIs ---
+app.post('/api/admin/config', isAdmin, async (req, res) => { await set(ref(db, 'config'), req.body.newConfig); res.send({ success: true }); });
+app.post('/api/admin/tasks', isAdmin, async (req, res) => { const { task } = req.body; const taskId = task.id || `task_${Date.now()}`; await set(ref(db, `bonusTasks/${taskId}`), { ...task, id: taskId }); res.send({ success: true }); });
+app.post('/api/admin/tasks/delete', isAdmin, async (req, res) => { await remove(ref(db, `bonusTasks/${req.body.taskId}`)); res.send({ success: true }); });
+app.post('/api/admin/find-user', isAdmin, async (req, res) => { const userSnap = await get(ref(db, `users/${req.body.userId}`)); if (userSnap.exists()) res.send(userSnap.val()); else res.status(404).send({ error: 'User not found' }); });
+app.post('/api/admin/update-balance', isAdmin, async (req, res) => { const { userId, newBalance } = req.body; if (isNaN(newBalance)) return res.status(400).send({ error: 'Invalid balance' }); await update(ref(db, `users/${userId}`), { points: Number(newBalance) }); res.send({ success: true }); });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
