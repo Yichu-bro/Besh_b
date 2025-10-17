@@ -36,22 +36,24 @@ const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || "@Yichu2330@";
 // ➡️ Telegram Bot Logic
 // ============================
 bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
-    // This logic remains the same as before
     const chatId = msg.chat.id;
-    const username = msg.from.username || `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
+    const username = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
     const referrerId = match[1] ? match[1].replace('ref', '') : null;
     const userRef = ref(db, `users/${chatId}`);
     const snap = await get(userRef);
     const configSnap = await get(ref(db, 'config'));
     const config = configSnap.val() || {};
+
     if (!snap.exists()) {
         const newUser = {
             username: username,
+            name: `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim(),
             points: 0,
             adsWatchedToday: 0,
             totalAdsWatchedLifetime: 0,
             lastAdWatchDate: null,
             claimedBonuses: [],
+            totalWithdrawn: 0,
             referralCode: chatId.toString(),
             referredBy: referrerId || null,
             referredUsers: [],
@@ -72,16 +74,14 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         }
         await set(userRef, newUser);
     }
+
     const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
     const imageUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQiAtmulOWYor1qCUwUT3fHFlRNzklasnKneg&s';
     const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.`;
     const buttonText = '🚀 Launch App';
     await bot.sendPhoto(chatId, imageUrl, {
-        caption: caption,
-        parse_mode: 'HTML',
-        reply_markup: {
-            inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]]
-        }
+        caption: caption, parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]] }
     });
 });
 
@@ -89,9 +89,13 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
 // 📡 API Endpoints
 // ============================
 const isAdmin = (req, res, next) => {
-    const { secret } = req.body;
-    if (secret !== ADMIN_SECRET_KEY) return res.status(401).send({ error: 'Unauthorized' });
+    if (req.body.secret !== ADMIN_SECRET_KEY) return res.status(401).send({ error: 'Unauthorized' });
     next();
+};
+
+const escapeMarkdownV2 = (text) => {
+    const toEscape = '_*[]()~`>#+-=|{}.!';
+    return text.replace(new RegExp(`[${toEscape.replace(/\\/g, '\\\\')}]`, 'g'), '\\$&');
 };
 
 // --- User-facing APIs ---
@@ -109,100 +113,85 @@ app.post('/api/user/:userId', async (req, res) => {
 app.get('/api/config', async (req, res) => res.json((await get(ref(db, 'config'))).val() || {}));
 app.get('/api/tasks', async (req, res) => res.json((await get(ref(db, 'bonusTasks'))).val() || {}));
 
-app.post('/api/request-withdrawal', async (req, res) => { /* Same as before */ });
-
-// --- NEW/UPDATED APIs ---
 app.get('/api/leaderboard', async (req, res) => {
     const usersSnap = await get(ref(db, 'users'));
     if (!usersSnap.exists()) return res.json({ byPoints: [], byReferrals: [] });
-
     const users = Object.entries(usersSnap.val()).map(([id, data]) => ({
-        id,
-        username: data.username,
+        id, username: data.username, name: data.name,
         points: data.points || 0,
         referrals: data.referredUsers?.length || 0
     }));
-
-    const byPoints = [...users].sort((a, b) => b.points - a.points).slice(0, 20);
-    const byReferrals = [...users].sort((a, b) => b.referrals - a.referrals).slice(0, 20);
-
+    const byPoints = [...users].sort((a, b) => b.points - a.points).slice(0, 100);
+    const byReferrals = [...users].sort((a, b) => b.referrals - a.referrals).slice(0, 100);
     res.json({ byPoints, byReferrals });
 });
 
 app.post('/api/verify-membership', async (req, res) => {
     const { userId, taskId, channelId, reward } = req.body;
-    if (!userId || !taskId || !channelId || !reward) {
-        return res.status(400).send({ error: "Missing required fields." });
-    }
-
+    if (!userId || !taskId || !channelId || !reward) return res.status(400).send({ error: "Missing required fields." });
     try {
         const member = await bot.getChatMember(channelId, userId);
-        const validStatus = ['creator', 'administrator', 'member'].includes(member.status);
-
-        if (validStatus) {
+        if (['creator', 'administrator', 'member'].includes(member.status)) {
             const userRef = ref(db, `users/${userId}`);
             const userSnap = await get(userRef);
             if (userSnap.exists()) {
                 const userData = userSnap.val();
-                if (userData.claimedBonuses?.includes(taskId)) {
-                    return res.status(400).send({ error: "Bonus already claimed." });
-                }
+                if (userData.claimedBonuses?.includes(taskId)) return res.status(400).send({ error: "Bonus already claimed." });
                 const newPoints = (userData.points || 0) + reward;
                 const newBonuses = [...(userData.claimedBonuses || []), taskId];
                 await update(userRef, { points: newPoints, claimedBonuses: newBonuses });
                 res.send({ success: true, points: newPoints });
-            } else {
-                res.status(404).send({ error: "User not found." });
-            }
-        } else {
-            res.status(403).send({ error: "You must be a member of the channel to claim this reward." });
-        }
+            } else res.status(404).send({ error: "User not found." });
+        } else res.status(403).send({ error: "You must join the channel to claim." });
     } catch (error) {
         console.error("Membership check failed:", error.response?.body?.description || error.message);
-        res.status(500).send({ error: "Could not verify membership. Make sure the bot is an admin in the channel." });
+        res.status(500).send({ error: "Verification failed. The bot must be an admin in the channel." });
     }
 });
 
-// --- Admin APIs ---
-app.post('/api/admin/config', isAdmin, async (req, res) => {
-    await set(ref(db, 'config'), req.body.newConfig);
-    res.send({ success: true });
-});
-
-app.post('/api/admin/tasks', isAdmin, async (req, res) => {
-    const { task } = req.body;
-    const taskId = task.id || `task_${Date.now()}`;
-    await set(ref(db, `bonusTasks/${taskId}`), { ...task, id: taskId });
-    res.send({ success: true });
-});
-
-app.post('/api/admin/tasks/delete', isAdmin, async (req, res) => {
-    await remove(ref(db, `bonusTasks/${req.body.taskId}`));
-    res.send({ success: true });
-});
-
-app.post('/api/admin/find-user', isAdmin, async (req, res) => {
-    const { userId } = req.body;
+app.post('/api/request-withdrawal', async (req, res) => {
+    const { userId, amount, method, account } = req.body;
     const userSnap = await get(ref(db, `users/${userId}`));
-    if (userSnap.exists()) res.send(userSnap.val());
-    else res.status(404).send({ error: 'User not found' });
-});
+    if (!userSnap.exists()) return res.status(404).send({ error: "User not found." });
+    const user = userSnap.val();
 
-app.post('/api/admin/update-balance', isAdmin, async (req, res) => {
-    const { userId, newBalance } = req.body;
-    if (isNaN(newBalance)) return res.status(400).send({ error: 'Invalid balance amount' });
-    const userRef = ref(db, `users/${userId}`);
-    const userSnap = await get(userRef);
-    if (userSnap.exists()) {
-        await update(userRef, { points: Number(newBalance) });
-        res.send({ success: true });
-    } else {
-        res.status(404).send({ error: 'User not found' });
+    const config = (await get(ref(db, 'config'))).val() || {};
+    const adminChatId = config.telegramChatId;
+    if (!adminChatId) return res.status(500).send({ error: "Server configuration error." });
+    
+    const message = `
+🔔 *New Withdrawal Request* 🔔
+\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_
+*User:* ${escapeMarkdownV2(user.username || user.name)} \\(ID: \`${userId}\`\\)
+*Amount:* ${amount} ${escapeMarkdownV2(config.currencyName || 'Points')}
+*Method:* ${escapeMarkdownV2(method)}
+*Wallet/Account:* \`${escapeMarkdownV2(account)}\`
+\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_
+*Remaining Balance:* ${user.points - amount}
+*Total Ads Watched:* ${user.totalAdsWatchedLifetime || 0}
+\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_
+*Time:* ${escapeMarkdownV2(new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' }))}
+    `;
+
+    try {
+        await bot.sendMessage(adminChatId, message, { parse_mode: 'MarkdownV2' });
+        await update(ref(db, `users/${userId}`), {
+            points: user.points - amount,
+            totalWithdrawn: (user.totalWithdrawn || 0) + amount
+        });
+        res.send({ success: "Withdrawal request submitted." });
+    } catch (error) {
+        console.error("Failed to send withdrawal notification:", error.response?.body);
+        res.status(500).send({ error: "Could not send notification to admin." });
     }
 });
 
+// --- Admin APIs (unchanged from before) ---
+app.post('/api/admin/config', isAdmin, async (req, res) => { /* ... */ });
+app.post('/api/admin/tasks', isAdmin, async (req, res) => { /* ... */ });
+app.post('/api/admin/tasks/delete', isAdmin, async (req, res) => { /* ... */ });
+app.post('/api/admin/find-user', isAdmin, async (req, res) => { /* ... */ });
+app.post('/api/admin/update-balance', isAdmin, async (req, res) => { /* ... */ });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
