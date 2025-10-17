@@ -1,4 +1,3 @@
-
 import express from 'express';
 import TelegramBot from 'node-telegram-bot-api';
 import { initializeApp } from 'firebase/app';
@@ -25,15 +24,15 @@ const db = getDatabase(appFB);
 // 🤖 Bot & Server Setup
 // ============================
 // ⚠️ IMPORTANT: Replace with your actual bot token from BotFather
-const BOT_TOKEN = '8200340976:AAHWfVE8MZkmCZMDfZZNopv55PTWsOlZtgU'; 
+const BOT_TOKEN = process.env.BOT_TOKEN || '8200340976:AAHWfVE8MZkmCZMDfZZNopv55PTWsOlZtgU'; 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 const app = express();
 app.use(express.json());
-app.use(cors()); // Enable CORS for all routes
+app.use(cors());
 
 // ⚠️ IMPORTANT: Change this to a long, random, secure secret key
-const ADMIN_SECRET_KEY = "@Yichu2330@"; 
+const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || "@Yichu2330@"; 
 
 // ============================
 // ➡️ Telegram Bot Logic (/start command)
@@ -46,10 +45,10 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     const userRef = ref(db, `users/${chatId}`);
     const snap = await get(userRef);
 
+    const configSnap = await get(ref(db, 'config'));
+    const config = configSnap.val() || {};
+
     if (!snap.exists()) {
-        // Get global config for referral bonuses
-        const configSnap = await get(ref(db, 'config'));
-        const config = configSnap.val() || {};
         const refereeBonus = config.referralBonusReferee || 500;
         const referrerBonus = config.referralBonusReferrer || 400;
 
@@ -60,49 +59,38 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
             totalAdsWatchedLifetime: 0,
             lastAdWatchDate: null,
             claimedBonuses: [],
-            referralCode: chatId.toString(), // The user's own ID is their referral code
+            referralCode: chatId.toString(),
             referredBy: referrerId || null,
             referredUsers: [],
             createdAt: new Date().toISOString()
         };
 
         if (referrerId && referrerId !== chatId.toString()) {
-            newUser.points += refereeBonus; // Award bonus to the new user
-
+            newUser.points += refereeBonus;
             const referrerRef = ref(db, `users/${referrerId}`);
             const referrerSnap = await get(referrerRef);
             if (referrerSnap.exists()) {
                 const referrerData = referrerSnap.val();
-                const updatedReferrerPoints = (referrerData.points || 0) + referrerBonus;
-                const updatedReferredUsers = [...(referrerData.referredUsers || []), chatId.toString()];
-                
                 await update(referrerRef, {
-                    points: updatedReferrerPoints,
-                    referredUsers: updatedReferredUsers
+                    points: (referrerData.points || 0) + referrerBonus,
+                    referredUsers: [...(referrerData.referredUsers || []), chatId.toString()]
                 });
-
                 bot.sendMessage(referrerId, `🎉 Congratulations! ${username} joined using your link. You've earned ${referrerBonus} points!`);
             }
         }
         await set(userRef, newUser);
     }
 
-    // Send the welcome message with the Mini App button
-    const configSnap = await get(ref(db, 'config'));
-    const config = configSnap.val() || {};
-    const webAppUrl = config.webAppUrl || 'https://rainbow-hotteok-d51412.netlify.app/besh.html'; // Fallback URL
-
-    const imageUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQrVCb0_Y-Okp3H04dSuasMa78iD1BHv9Sz-U-r0ONnUg&s=10'; // <-- EDIT THIS IMAGE LINK
-    const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.`; // <-- EDIT THIS TEXT
-    const buttonText = '🚀 Launch App'; // <-- EDIT THIS BUTTON TEXT
+    const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html#';
+    const imageUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSnS33eug2iIG3WtWvf2C_xpTxvxGGVY2xHfhMJr9XP-w&s=10';
+    const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.\n\n now`;
+    const buttonText = '🚀 Launch App';
 
     await bot.sendPhoto(chatId, imageUrl, {
         caption: caption,
         parse_mode: 'HTML',
         reply_markup: {
-            inline_keyboard: [
-                [{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]
-            ]
+            inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]]
         }
     });
 });
@@ -110,70 +98,43 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
 // ============================
 // 📡 API for Mini App & Admin Panel
 // ============================
-
-// Middleware for admin authentication
 const isAdmin = (req, res, next) => {
     const { secret } = req.body;
-    if (secret !== ADMIN_SECRET_KEY) {
-        return res.status(401).send({ error: 'Unauthorized' });
-    }
+    if (secret !== ADMIN_SECRET_KEY) return res.status(401).send({ error: 'Unauthorized' });
     next();
 };
 
-// GET user data
 app.get('/api/user/:userId', async (req, res) => {
-    const { userId } = req.params;
-    const userRef = ref(db, `users/${userId}`);
+    const userRef = ref(db, `users/${req.params.userId}`);
     const snap = await get(userRef);
-    if (snap.exists()) {
-        res.json(snap.val());
-    } else {
-        res.status(404).send({ error: 'User not found. Please /start the bot.' });
-    }
+    if (snap.exists()) res.json(snap.val());
+    else res.status(404).send({ error: 'User not found. Please /start the bot.' });
 });
 
-// POST (update) user data
 app.post('/api/user/:userId', async (req, res) => {
-    const { userId } = req.params;
-    await set(ref(db, `users/${userId}`), req.body);
+    await set(ref(db, `users/${req.params.userId}`), req.body);
     res.send({ success: 'User data updated' });
 });
 
-// GET referrer's username
 app.get('/api/referrer/:userId', async (req, res) => {
-    const { userId } = req.params;
-    const referrerRef = ref(db, `users/${userId}`);
-    const snap = await get(referrerRef);
-    if (snap.exists()) {
-        const { username } = snap.val();
-        res.json({ username });
-    } else {
-        res.status(404).send({ error: 'Referrer not found' });
-    }
+    const snap = await get(ref(db, `users/${req.params.userId}`));
+    if (snap.exists()) res.json({ username: snap.val().username });
+    else res.status(404).send({ error: 'Referrer not found' });
 });
 
-// GET global app configuration
 app.get('/api/config', async (req, res) => {
-    const configRef = ref(db, 'config');
-    const snap = await get(configRef);
-    res.json(snap.val() || {});
+    res.json((await get(ref(db, 'config'))).val() || {});
 });
 
-// POST (update) app configuration (Admin Only)
 app.post('/api/config', isAdmin, async (req, res) => {
-    const { newConfig } = req.body;
-    await set(ref(db, 'config'), newConfig);
+    await set(ref(db, 'config'), req.body.newConfig);
     res.send({ success: 'Configuration updated' });
 });
 
-// GET all bonus tasks
 app.get('/api/tasks', async (req, res) => {
-    const tasksRef = ref(db, 'bonusTasks');
-    const snap = await get(tasksRef);
-    res.json(snap.val() || {});
+    res.json((await get(ref(db, 'bonusTasks'))).val() || {});
 });
 
-// POST (add/update) a bonus task (Admin Only)
 app.post('/api/tasks', isAdmin, async (req, res) => {
     const { task } = req.body;
     const taskId = task.id || `task_${Date.now()}`;
@@ -181,17 +142,52 @@ app.post('/api/tasks', isAdmin, async (req, res) => {
     res.send({ success: 'Task saved' });
 });
 
-// DELETE a bonus task (Admin Only)
 app.post('/api/tasks/delete', isAdmin, async (req, res) => {
-    const { taskId } = req.body;
-    if (!taskId) return res.status(400).send({ error: 'Task ID is required' });
-    await remove(ref(db, `bonusTasks/${taskId}`));
+    if (!req.body.taskId) return res.status(400).send({ error: 'Task ID is required' });
+    await remove(ref(db, `bonusTasks/${req.body.taskId}`));
     res.send({ success: 'Task deleted' });
 });
 
-// ============================
-// 🚀 Start Server
-// ============================
+// New endpoint for withdrawal requests
+app.post('/api/request-withdrawal', async (req, res) => {
+    const { userId, amount, method, account, userPoints, totalAds } = req.body;
+    
+    const userSnap = await get(ref(db, `users/${userId}`));
+    if (!userSnap.exists()) return res.status(404).send({ error: "User not found." });
+    const user = userSnap.val();
+
+    const configSnap = await get(ref(db, 'config'));
+    const config = configSnap.val() || {};
+    const adminChatId = config.telegramChatId;
+
+    if (!adminChatId) {
+        console.error("Admin TELEGRAM_CHAT_ID is not configured in the admin panel.");
+        return res.status(500).send({ error: "Server configuration error." });
+    }
+
+    const message = `
+🔔 *New Withdrawal Request* 🔔
+------------------------------------
+*User:* ${user.username} (${userId})
+*Points to Withdraw:* ${amount}
+*Payment Method:* ${method}
+*Wallet/Account:* \`${account}\`
+------------------------------------
+*Remaining Balance:* ${userPoints}
+*Total Ads Watched:* ${totalAds}
+------------------------------------
+*Time:* ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })}
+    `;
+
+    try {
+        await bot.sendMessage(adminChatId, message, { parse_mode: 'Markdown' });
+        res.send({ success: "Withdrawal request submitted." });
+    } catch (error) {
+        console.error("Failed to send withdrawal notification:", error);
+        res.status(500).send({ error: "Could not send notification." });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on http://localhost:${PORT}`);
