@@ -70,7 +70,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         }
         const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
         const imageUrl = 'https://i.postimg.cc/B6Mhm3wz/wmremove-transformed.jpg';
-        const caption = `<b>${username} እንኳን ወደ በሽ በሽ መጡ </b>\n\nከታች ያለውን በሽ በሽ ምለውን ተጫን ገንዘብ ለማግኘት እና መተግበሪያውን ለመጀመር  ለመጀመር።`;
+        const caption = `<b>${username} እንኳን ወደ በሽ በሽ መጡ </b>\n\nከታች ያለውን በሽ በሽ ምለውን ይጫኑ ገንዘብ ለማግኘት እና መተግበሪያውን ለመጀመር።`;
         const buttonText = '🚀 በሽ በሽ App';
         await bot.sendPhoto(chatId, imageUrl, {
             caption: caption, parse_mode: 'HTML',
