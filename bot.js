@@ -69,7 +69,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
             await set(userRef, newUser);
         }
         const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
-        const imageUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQiAtmulOWYor1qCUwUT3fHFlRNzklasnKneg&s';
+        const imageUrl = 'https://i.postimg.cc/B6Mhm3wz/wmremove-transformed.jpg';
         const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.`;
         const buttonText = '🚀 Launch App';
         await bot.sendPhoto(chatId, imageUrl, {
