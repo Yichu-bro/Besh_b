@@ -23,7 +23,7 @@ const db = getDatabase(appFB);
 // ============================
 // 🤖 Bot & Server Setup
 // ============================
-const BOT_TOKEN = process.env.BOT_TOKEN || '8200340976:AAHOoyUjDWh49GSNZIcPxzBAjY1VtNybeAk'; 
+const BOT_TOKEN = process.env.BOT_TOKEN || ''8200340976:AAHOoyUjDWh49GSNZIcPxzBAjY1VtNybeAk'; 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 const app = express();
@@ -36,43 +36,48 @@ const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || "@Yichu2330@";
 // ➡️ Telegram Bot Logic (/start command)
 // ============================
 bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const username = msg.from.username || `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
-    const referrerId = match[1] ? match[1].replace('ref', '') : null;
-    const userRef = ref(db, `users/${chatId}`);
-    const snap = await get(userRef);
-    const configSnap = await get(ref(db, 'config'));
-    const config = configSnap.val() || {};
-    if (!snap.exists()) {
-        const newUser = {
-            username: username, points: 0, adsWatchedToday: 0, totalAdsWatchedLifetime: 0,
-            lastAdWatchDate: null, claimedBonuses: [], totalWithdrawn: 0,
-            referralCode: chatId.toString(), referredBy: referrerId || null,
-            referredUsers: [], createdAt: new Date().toISOString()
-        };
-        if (referrerId && referrerId !== chatId.toString()) {
-            newUser.points += (config.referralBonusReferee || 0);
-            const referrerRef = ref(db, `users/${referrerId}`);
-            const referrerSnap = await get(referrerRef);
-            if (referrerSnap.exists()) {
-                const rData = referrerSnap.val();
-                await update(referrerRef, {
-                    points: (rData.points || 0) + (config.referralBonusReferrer || 0),
-                    referredUsers: [...(rData.referredUsers || []), chatId.toString()]
-                });
-                bot.sendMessage(referrerId, `🎉 ${username} joined using your link! You've earned ${config.referralBonusReferrer || 0} ${config.currencyName || 'Points'}!`);
+    try {
+        const chatId = msg.chat.id;
+        const username = msg.from.username || `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
+        const referrerId = match[1] ? match[1].replace('ref', '') : null;
+        const userRef = ref(db, `users/${chatId}`);
+        const snap = await get(userRef);
+        const configSnap = await get(ref(db, 'config'));
+        const config = configSnap.val() || {};
+
+        if (!snap.exists()) {
+            const newUser = {
+                username: username, points: 0, adsWatchedToday: 0, totalAdsWatchedLifetime: 0,
+                lastAdWatchDate: null, claimedBonuses: [], totalWithdrawn: 0,
+                referralCode: chatId.toString(), referredBy: referrerId || null,
+                referredUsers: [], createdAt: new Date().toISOString()
+            };
+            if (referrerId && referrerId !== chatId.toString()) {
+                newUser.points += (config.referralBonusReferee || 0);
+                const referrerRef = ref(db, `users/${referrerId}`);
+                const referrerSnap = await get(referrerRef);
+                if (referrerSnap.exists()) {
+                    const rData = referrerSnap.val() || {};
+                    await update(referrerRef, {
+                        points: (rData.points || 0) + (config.referralBonusReferrer || 0),
+                        referredUsers: [...(rData.referredUsers || []), chatId.toString()]
+                    });
+                    bot.sendMessage(referrerId, `🎉 ${username} joined using your link! You've earned ${config.referralBonusReferrer || 0} ${config.currencyName || 'Points'}!`);
+                }
             }
+            await set(userRef, newUser);
         }
-        await set(userRef, newUser);
+        const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
+        const imageUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQiAtmulOWYor1qCUwUT3fHFlRNzklasnKneg&s';
+        const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.`;
+        const buttonText = '🚀 Earn Now';
+        await bot.sendPhoto(chatId, imageUrl, {
+            caption: caption, parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]] }
+        });
+    } catch (error) {
+        console.error("Error in /start command:", error);
     }
-    const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
-    const imageUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQiAtmulOWYor1qCUwUT3fHFlRNzklasnKneg&s';
-    const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.\nhi`;
-    const buttonText = '🚀 Launch App';
-    await bot.sendPhoto(chatId, imageUrl, {
-        caption: caption, parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]] }
-    });
 });
 
 // ============================
@@ -98,7 +103,7 @@ app.get('/api/config', async (req, res) => res.json((await get(ref(db, 'config')
 app.get('/api/tasks', async (req, res) => res.json((await get(ref(db, 'bonusTasks'))).val() || {}));
 app.get('/api/referrer/:userId', async (req, res) => {
     const snap = await get(ref(db, `users/${req.params.userId}`));
-    if (snap.exists()) res.json({ username: snap.val().username });
+    if (snap.exists()) res.json({ username: snap.val().username || `User ${req.params.userId}` });
     else res.status(404).send({ error: 'Referrer not found' });
 });
 
@@ -108,17 +113,20 @@ app.get('/api/leaderboard/:userId', async (req, res) => {
     const usersSnap = await get(ref(db, 'users'));
     if (!usersSnap.exists()) return res.json({ byPoints: [], byReferrals: [], currentUserRank: null });
     const users = Object.entries(usersSnap.val()).map(([id, data]) => ({
-        id, username: data.username, points: data.points || 0,
+        id, username: data.username || `User ${id}`, points: data.points || 0,
         referrals: data.referredUsers?.length || 0
     }));
     const sortedByPoints = [...users].sort((a, b) => b.points - a.points);
     const sortedByReferrals = [...users].sort((a, b) => b.referrals - a.referrals);
-    const findRank = (arr, id) => arr.findIndex(u => u.id === id) + 1;
+    const findRank = (arr, id) => {
+        const rank = arr.findIndex(u => u.id === id) + 1;
+        return rank > 0 ? rank : '100+';
+    };
     res.json({
         byPoints: sortedByPoints.slice(0, 100), byReferrals: sortedByReferrals.slice(0, 100),
         currentUserRank: {
-            points: findRank(sortedByPoints, currentUserId) || '100+',
-            referrals: findRank(sortedByReferrals, currentUserId) || '100+'
+            points: findRank(sortedByPoints, currentUserId),
+            referrals: findRank(sortedByReferrals, currentUserId)
         }
     });
 });
@@ -132,7 +140,7 @@ app.post('/api/verify-membership', async (req, res) => {
             const userRef = ref(db, `users/${userId}`);
             const userSnap = await get(userRef);
             if (userSnap.exists()) {
-                const userData = userSnap.val();
+                const userData = userSnap.val() || {};
                 if (userData.claimedBonuses?.includes(taskId)) return res.status(400).send({ error: "Bonus already claimed." });
                 await update(userRef, {
                     points: (userData.points || 0) + reward,
@@ -142,40 +150,48 @@ app.post('/api/verify-membership', async (req, res) => {
             } else res.status(404).send({ error: "User not found." });
         } else res.status(403).send({ error: "You must be a member of the channel." });
     } catch (error) {
+        console.error("Membership Check Error:", error.response?.body || error.message);
         res.status(500).send({ error: "Verification failed. Bot must be an admin in the channel." });
     }
 });
 
-// --- Withdrawal API ---
-const escapeMarkdownV2 = (text) => text.toString().replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+// --- Withdrawal API (REWRITTEN FOR STABILITY) ---
+const escapeMarkdownV2 = (text = '') => text.toString().replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+
 app.post('/api/request-withdrawal', async (req, res) => {
-    // UPDATED to include accountName
     const { userId, amount, method, account, accountName } = req.body;
-    const userSnap = await get(ref(db, `users/${userId}`));
-    if (!userSnap.exists()) return res.status(404).send({ error: "User not found." });
-    
-    const user = userSnap.val();
-    const config = (await get(ref(db, 'config'))).val() || {};
-    const adminChatId = config.telegramChatId;
-    if (!adminChatId) return res.status(500).send({ error: "Admin Chat ID not configured." });
-    
-    // UPDATED to include accountName in the message
-    const message = `
-🔔 *New Withdrawal Request* 🔔
-*User:* ${escapeMarkdownV2(user.username)} \\(${escapeMarkdownV2(userId)}\\)
-*Amount:* ${escapeMarkdownV2(amount)} ${escapeMarkdownV2(config.currencyName || 'Points')}
-*Method:* ${escapeMarkdownV2(method)}
-*Account Holder:* ${escapeMarkdownV2(accountName)}
-*Wallet/Account:* \`${escapeMarkdownV2(account)}\`
-*Remaining Balance:* ${user.points - amount}
-*Total Ads:* ${user.totalAdsWatchedLifetime || 0}
-    `;
+
     try {
+        const userSnap = await get(ref(db, `users/${userId}`));
+        if (!userSnap.exists()) return res.status(404).send({ error: "User not found." });
+        
+        const user = userSnap.val() || {};
+        const config = (await get(ref(db, 'config'))).val() || {};
+        const adminChatId = config.telegramChatId;
+        if (!adminChatId) return res.status(500).send({ error: "Admin Chat ID not configured." });
+        
+        const messageParts = [
+            `🔔 *New Withdrawal Request* 🔔`,
+            `*User:* ${escapeMarkdownV2(user.username || 'N/A')} \\(${escapeMarkdownV2(userId)}\\)`,
+            `*Amount:* ${escapeMarkdownV2(amount)} ${escapeMarkdownV2(config.currencyName || 'Points')}`,
+            `*Method:* ${escapeMarkdownV2(method)}`,
+            `*Account Holder:* ${escapeMarkdownV2(accountName)}`,
+            `*Wallet:* \`${escapeMarkdownV2(account)}\``,
+            `*Remaining Balance:* ${escapeMarkdownV2((user.points || 0) - amount)}`,
+            `*Total Ads:* ${escapeMarkdownV2(user.totalAdsWatchedLifetime || 0)}`
+        ];
+        const message = messageParts.join('\n');
+    
         await bot.sendMessage(adminChatId, message, { parse_mode: 'MarkdownV2' });
-        await update(ref(db, `users/${userId}`), { totalWithdrawn: (user.totalWithdrawn || 0) + amount });
+        
+        await update(ref(db, `users/${userId}`), {
+            totalWithdrawn: (user.totalWithdrawn || 0) + amount
+        });
+
         res.send({ success: true });
+
     } catch (error) {
-        console.error("TELEGRAM SEND FAILED:", error.response?.body || error.message);
+        console.error("WITHDRAWAL FAILED:", error.response?.body || error.message);
         res.status(500).send({ error: "Could not send notification to admin." });
     }
 });
