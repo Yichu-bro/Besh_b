@@ -5,7 +5,7 @@ import { getDatabase, ref, set, get, update, remove } from 'firebase/database';
 import cors from 'cors';
 
 // ============================
-// 🔥 Firebase Configuration (SAFE on the server)
+// 🔥 Firebase Configuration
 // ============================
 const firebaseConfig = {
     apiKey: "AIzaSyD8-E3hJLweH60kcAHLhg8kcbEWkADejVg",
@@ -149,19 +149,24 @@ app.post('/api/verify-membership', async (req, res) => {
 // --- Withdrawal API ---
 const escapeMarkdownV2 = (text) => text.toString().replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 app.post('/api/request-withdrawal', async (req, res) => {
-    const { userId, amount, method, account } = req.body;
+    // UPDATED to include accountName
+    const { userId, amount, method, account, accountName } = req.body;
     const userSnap = await get(ref(db, `users/${userId}`));
     if (!userSnap.exists()) return res.status(404).send({ error: "User not found." });
+    
     const user = userSnap.val();
     const config = (await get(ref(db, 'config'))).val() || {};
     const adminChatId = config.telegramChatId;
     if (!adminChatId) return res.status(500).send({ error: "Admin Chat ID not configured." });
+    
+    // UPDATED to include accountName in the message
     const message = `
 🔔 *New Withdrawal Request* 🔔
 *User:* ${escapeMarkdownV2(user.username)} \\(${escapeMarkdownV2(userId)}\\)
 *Amount:* ${escapeMarkdownV2(amount)} ${escapeMarkdownV2(config.currencyName || 'Points')}
 *Method:* ${escapeMarkdownV2(method)}
-*Wallet:* \`${escapeMarkdownV2(account)}\`
+*Account Holder:* ${escapeMarkdownV2(accountName)}
+*Wallet/Account:* \`${escapeMarkdownV2(account)}\`
 *Remaining Balance:* ${user.points - amount}
 *Total Ads:* ${user.totalAdsWatchedLifetime || 0}
     `;
@@ -175,7 +180,7 @@ app.post('/api/request-withdrawal', async (req, res) => {
     }
 });
 
-// --- Admin APIs ---
+// --- Admin APIs (No changes needed) ---
 app.post('/api/admin/config', isAdmin, async (req, res) => { await set(ref(db, 'config'), req.body.newConfig); res.send({ success: true }); });
 app.post('/api/admin/tasks', isAdmin, async (req, res) => { const { task } = req.body; const taskId = task.id || `task_${Date.now()}`; await set(ref(db, `bonusTasks/${taskId}`), { ...task, id: taskId }); res.send({ success: true }); });
 app.post('/api/admin/tasks/delete', isAdmin, async (req, res) => { await remove(ref(db, `bonusTasks/${req.body.taskId}`)); res.send({ success: true }); });
