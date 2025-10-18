@@ -23,7 +23,7 @@ const db = getDatabase(appFB);
 // ============================
 // 🤖 Bot & Server Setup
 // ============================
-const BOT_TOKEN = process.env.BOT_TOKEN || ''8200340976:AAHOoyUjDWh49GSNZIcPxzBAjY1VtNybeAk'; 
+const BOT_TOKEN = process.env.BOT_TOKEN || '8200340976:AAHOoyUjDWh49GSNZIcPxzBAjY1VtNybeAk'; 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 const app = express();
