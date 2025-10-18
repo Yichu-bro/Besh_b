@@ -49,6 +49,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
             const newUser = {
                 username: username, points: 0, adsWatchedToday: 0, totalAdsWatchedLifetime: 0,
                 lastAdWatchDate: null, claimedBonuses: [], totalWithdrawn: 0,
+                storyPosted: false,
                 referralCode: chatId.toString(), referredBy: referrerId || null,
                 referredUsers: [], createdAt: new Date().toISOString()
             };
@@ -70,7 +71,7 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
         const imageUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQiAtmulOWYor1qCUwUT3fHFlRNzklasnKneg&s';
         const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.`;
-        const buttonText = '🚀 Earn Now';
+        const buttonText = '🚀 Launch App';
         await bot.sendPhoto(chatId, imageUrl, {
             caption: caption, parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]] }
@@ -155,7 +156,7 @@ app.post('/api/verify-membership', async (req, res) => {
     }
 });
 
-// --- Withdrawal API (REWRITTEN FOR STABILITY) ---
+// --- Withdrawal API ---
 const escapeMarkdownV2 = (text = '') => text.toString().replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 
 app.post('/api/request-withdrawal', async (req, res) => {
@@ -196,7 +197,19 @@ app.post('/api/request-withdrawal', async (req, res) => {
     }
 });
 
-// --- Admin APIs (No changes needed) ---
+// --- Story Posted API ---
+app.post('/api/user/:userId/story-posted', async (req, res) => {
+    const { userId } = req.params;
+    const userRef = ref(db, `users/${userId}`);
+    try {
+        await update(userRef, { storyPosted: true });
+        res.send({ success: true });
+    } catch (error) {
+        res.status(500).send({ error: "Could not update story status." });
+    }
+});
+
+// --- Admin APIs ---
 app.post('/api/admin/config', isAdmin, async (req, res) => { await set(ref(db, 'config'), req.body.newConfig); res.send({ success: true }); });
 app.post('/api/admin/tasks', isAdmin, async (req, res) => { const { task } = req.body; const taskId = task.id || `task_${Date.now()}`; await set(ref(db, `bonusTasks/${taskId}`), { ...task, id: taskId }); res.send({ success: true }); });
 app.post('/api/admin/tasks/delete', isAdmin, async (req, res) => { await remove(ref(db, `bonusTasks/${req.body.taskId}`)); res.send({ success: true }); });
