@@ -70,8 +70,8 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
         }
         const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
         const imageUrl = 'https://i.postimg.cc/B6Mhm3wz/wmremove-transformed.jpg';
-        const caption = `<b>Welcome to Tag2Cash, ${username}!</b>\n\nTap the button below to launch the app and start earning.`;
-        const buttonText = '🚀 Launch App';
+        const caption = `<b>${username} እንኳን ወደ በሽ በሽ መጡ </b>\n\nከታች ያለውን በሽ በሽ ምለውን ተጫን ገንዘብ ለማግኘት እና መተግበሪያውን ለመጀመር  ለመጀመር።`;
+        const buttonText = '🚀 በሽ በሽ App';
         await bot.sendPhoto(chatId, imageUrl, {
             caption: caption, parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]] }
