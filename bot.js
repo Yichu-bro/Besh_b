@@ -38,7 +38,8 @@ const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY || "@Yichu2330@";
 bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
     try {
         const chatId = msg.chat.id;
-        const username = msg.from.username || `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
+        const userFullName = `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
+        const username = msg.from.username ? `@${msg.from.username}` : userFullName;
         const referrerId = match[1] ? match[1].replace('ref', '') : null;
         const userRef = ref(db, `users/${chatId}`);
         const snap = await get(userRef);
@@ -47,9 +48,9 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
 
         if (!snap.exists()) {
             const newUser = {
-                username: username, points: 0, adsWatchedToday: 0, totalAdsWatchedLifetime: 0,
+                username: userFullName, points: 0, adsWatchedToday: 0, totalAdsWatchedLifetime: 0,
                 lastAdWatchDate: null, claimedBonuses: [], totalWithdrawn: 0,
-                storyPosted: false,
+                storyPosted: false, bonusTasksRequirementMet: false,
                 referralCode: chatId.toString(), referredBy: referrerId || null,
                 referredUsers: [], createdAt: new Date().toISOString()
             };
@@ -63,21 +64,59 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
                         points: (rData.points || 0) + (config.referralBonusReferrer || 0),
                         referredUsers: [...(rData.referredUsers || []), chatId.toString()]
                     });
-                    bot.sendMessage(referrerId, `🎉 ${username} joined using your link! You've earned ${config.referralBonusReferrer || 0} ${config.currencyName || 'Points'}!`);
+                    bot.sendMessage(referrerId, `🎉 ${userFullName} joined using your link! You've earned ${config.referralBonusReferrer || 0} ${config.currencyName || 'Points'}!`);
                 }
             }
             await set(userRef, newUser);
+
+            // --- NEW: Announce New User in Channel ---
+            const botInfo = await bot.getMe();
+            const botUsername = botInfo.username;
+            const newUserReferralLink = `https://t.me/${botUsername}?start=ref${chatId}`;
+            
+            // YOU CAN EDIT THE TEXT/CAPTION HERE
+            const channelMessage = `
+🎉 New Member Alert! 🎉
+
+Welcome to our new user:
+👤 **Name:** ${userFullName}
+🆔 **ID:** \`${chatId}\`
+🔗 **Username:** ${username}
+
+Help them get started! Use their referral link below.
+            `;
+            
+            const channelId = '@Besh_org'; // Your channel username
+            
+            // YOU CAN EDIT THE BUTTON TEXT HERE
+            const inlineKeyboard = {
+                inline_keyboard: [
+                    [
+                        {
+                            text: 'Use Their Referral Link',
+                            url: newUserReferralLink
+                        }
+                    ]
+                ]
+            };
+
+            await bot.sendMessage(channelId, channelMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: inlineKeyboard
+            });
+            // --- END of New User Announcement ---
         }
+
         const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
         const imageUrl = 'https://i.postimg.cc/B6Mhm3wz/wmremove-transformed.jpg';
         const caption = `<b>${username} እንኳን ወደ በሽ በሽ መጡ </b>\n\nከታች ያለውን በሽ በሽ ምለውን ይጫኑ ገንዘብ ለማግኘት እና መተግበሪያውን ለመጀመር።`;
-        const buttonText = '🚀 በሽ በሽ App';
+        const buttonText = '🚀 Launch App';
         await bot.sendPhoto(chatId, imageUrl, {
             caption: caption, parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]] }
         });
     } catch (error) {
-        console.error("Error in /start command:", error);
+        console.error("Error in /start command:", error.response?.body || error.message);
     }
 });
 
@@ -161,36 +200,18 @@ const escapeMarkdownV2 = (text = '') => text.toString().replace(/[_*[\]()~`>#+\-
 
 app.post('/api/request-withdrawal', async (req, res) => {
     const { userId, amount, method, account, accountName } = req.body;
-
     try {
         const userSnap = await get(ref(db, `users/${userId}`));
         if (!userSnap.exists()) return res.status(404).send({ error: "User not found." });
-        
         const user = userSnap.val() || {};
         const config = (await get(ref(db, 'config'))).val() || {};
         const adminChatId = config.telegramChatId;
         if (!adminChatId) return res.status(500).send({ error: "Admin Chat ID not configured." });
-        
-        const messageParts = [
-            `🔔 *New Withdrawal Request* 🔔`,
-            `*User:* ${escapeMarkdownV2(user.username || 'N/A')} \\(${escapeMarkdownV2(userId)}\\)`,
-            `*Amount:* ${escapeMarkdownV2(amount)} ${escapeMarkdownV2(config.currencyName || 'Points')}`,
-            `*Method:* ${escapeMarkdownV2(method)}`,
-            `*Account Holder:* ${escapeMarkdownV2(accountName)}`,
-            `*Wallet:* \`${escapeMarkdownV2(account)}\``,
-            `*Remaining Balance:* ${escapeMarkdownV2((user.points || 0) - amount)}`,
-            `*Total Ads:* ${escapeMarkdownV2(user.totalAdsWatchedLifetime || 0)}`
-        ];
+        const messageParts = [ `🔔 *New Withdrawal Request* 🔔`, `*User:* ${escapeMarkdownV2(user.username || 'N/A')} \\(${escapeMarkdownV2(userId)}\\)`, `*Amount:* ${escapeMarkdownV2(amount)} ${escapeMarkdownV2(config.currencyName || 'Points')}`, `*Method:* ${escapeMarkdownV2(method)}`, `*Account Holder:* ${escapeMarkdownV2(accountName)}`, `*Wallet:* \`${escapeMarkdownV2(account)}\``, `*Remaining Balance:* ${escapeMarkdownV2((user.points || 0) - amount)}`, `*Total Ads:* ${escapeMarkdownV2(user.totalAdsWatchedLifetime || 0)}` ];
         const message = messageParts.join('\n');
-    
         await bot.sendMessage(adminChatId, message, { parse_mode: 'MarkdownV2' });
-        
-        await update(ref(db, `users/${userId}`), {
-            totalWithdrawn: (user.totalWithdrawn || 0) + amount
-        });
-
+        await update(ref(db, `users/${userId}`), { totalWithdrawn: (user.totalWithdrawn || 0) + amount });
         res.send({ success: true });
-
     } catch (error) {
         console.error("WITHDRAWAL FAILED:", error.response?.body || error.message);
         res.status(500).send({ error: "Could not send notification to admin." });
@@ -215,6 +236,34 @@ app.post('/api/admin/tasks', isAdmin, async (req, res) => { const { task } = req
 app.post('/api/admin/tasks/delete', isAdmin, async (req, res) => { await remove(ref(db, `bonusTasks/${req.body.taskId}`)); res.send({ success: true }); });
 app.post('/api/admin/find-user', isAdmin, async (req, res) => { const userSnap = await get(ref(db, `users/${req.body.userId}`)); if (userSnap.exists()) res.send(userSnap.val()); else res.status(404).send({ error: 'User not found' }); });
 app.post('/api/admin/update-balance', isAdmin, async (req, res) => { const { userId, newBalance } = req.body; if (isNaN(newBalance)) return res.status(400).send({ error: 'Invalid balance' }); await update(ref(db, `users/${userId}`), { points: Number(newBalance) }); res.send({ success: true }); });
+app.post('/api/admin/grandfather-bonus-tasks', isAdmin, async (req, res) => {
+    const { previousTaskCount } = req.body;
+    if (isNaN(previousTaskCount) || previousTaskCount < 0) {
+        return res.status(400).send({ error: 'Invalid previous task count provided.' });
+    }
+    try {
+        const usersRef = ref(db, 'users');
+        const usersSnap = await get(usersRef);
+        if (!usersSnap.exists()) return res.send({ success: true, updatedCount: 0 });
+        const usersData = usersSnap.val();
+        let updatedCount = 0;
+        const updates = {};
+        for (const userId in usersData) {
+            const user = usersData[userId];
+            if ((user.claimedBonuses?.length || 0) >= previousTaskCount) {
+                updates[`${userId}/bonusTasksRequirementMet`] = true;
+                updatedCount++;
+            }
+        }
+        if (Object.keys(updates).length > 0) {
+            await update(usersRef, updates);
+        }
+        res.send({ success: true, updatedCount });
+    } catch (error) {
+        console.error("Grandfathering Error:", error);
+        res.status(500).send({ error: 'An error occurred while updating users.' });
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server is running on http://localhost:${PORT}`));
