@@ -93,7 +93,7 @@ Help them get started! Use their referral link below.
                 inline_keyboard: [
                     [
                         {
-                            text: 'Use Their Referral Link',
+                            text: 'Use New user Referral Link',
                             url: newUserReferralLink
                         }
                     ]
