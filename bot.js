@@ -110,7 +110,7 @@ Help them get started! Use their referral link below.
         const webAppUrl = config.webAppUrl || 'https://yichu-bro.github.io/Besh_Fr/Index.html';
         const imageUrl = 'https://i.postimg.cc/B6Mhm3wz/wmremove-transformed.jpg';
         const caption = `<b>${username} እንኳን ወደ በሽ በሽ መጡ </b>\n\nከታች ያለውን በሽ በሽ ምለውን ይጫኑ ገንዘብ ለማግኘት እና መተግበሪያውን ለመጀመር።`;
-        const buttonText = '🚀 Launch App';
+        const buttonText = '🚀 በሽ በሽ ';
         await bot.sendPhoto(chatId, imageUrl, {
             caption: caption, parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [[{ text: buttonText, web_app: { url: `${webAppUrl}?userId=${chatId}` } }]] }
