@@ -84,14 +84,6 @@ bot.onText(/\/start(?: (.+))?/, async (msg, match) => {
 
 እነሱን አባል ለመርዳት ከታች ያለውን Bottom ሊንክ ይጠቀሙ።
 
-🎉 New Member Alert! 🎉
-
-Welcome to our new user:
-👤 **Name:** ${userFullName}
-🆔 **ID:** \`${chatId}\`
-🔗 **Username:** ${username}
-
-Help them get started! Use their referral link below.
             `;
             
             const channelId = '@Besh_org'; // Your channel username
